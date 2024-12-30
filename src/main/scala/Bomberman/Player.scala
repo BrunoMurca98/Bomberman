@@ -1,0 +1,5 @@
+package Bomberman
+
+class Player {
+
+}
