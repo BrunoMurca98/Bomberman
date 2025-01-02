@@ -114,7 +114,14 @@ object Bomberman {
         System.exit(0) // Exit the game immediately
       }
 
-
+      // Schedule the bomb to be cleared and the explosion zone to be cleared after 3 seconds
+      val timer = new Timer()
+      val clearExplosionTask = new TimerTask {
+        def run(): Unit = {
+          clearExplosion(bomb) // Clear the explosion marks (X) from the grid
+        }
+      }
+      timer.schedule(clearExplosionTask, 3000) // Schedule to run after 3 seconds
     }
   }
 
@@ -125,6 +132,37 @@ object Bomberman {
     }
   }
 
+  // Clear the explosion area (remove 'X' marks) after 3 seconds
+  def clearExplosion(bomb: Bomb): Unit = {
+    // Clear the explosion marks around the bomb and its adjacent cells
+    markExplosionClear(bomb.x, bomb.y) // Clear the bomb's own location
+    markExplosionClear(bomb.x - 1, bomb.y) // Up
+    markExplosionClear(bomb.x + 1, bomb.y) // Down
+    markExplosionClear(bomb.x, bomb.y - 1) // Left
+    markExplosionClear(bomb.x, bomb.y + 1) // Right
+
+    // Clear the bomb itself from the grid
+    clearBomb(bomb)
+  }
+
+  // Clear a single explosion mark ('X') if within bounds
+  def markExplosionClear(x: Int, y: Int): Unit = {
+    if (x >= 0 && x < grid.length && y >= 0 && y < grid(x).length && grid(x)(y) == 'X') {
+      grid(x)(y) = '.' // Remove explosion mark
+    }
+  }
+
+  // Clear the bomb from the grid
+  def clearBomb(bomb: Bomb): Unit = {
+    grid(bomb.x)(bomb.y) = '.' // Remove bomb from the grid
+    bombs = bombs.filterNot(b => b == bomb) // Remove from the bomb list
+    println(s"Bomb cleared at (${bomb.x}, ${bomb.y})")
+  }
+
+  // Remove exploded bombs from the list
+  def removeExplodedBombs(): Unit = {
+    bombs = bombs.filterNot(_.exploded) // Remove exploded bombs
+  }
 
   // Check if the bomb exploded at the same position as the player
   def checkGameOver(player: Player): Boolean = {
