@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="sbt: io.chrisdavenport:epimetheus-http4s_2.13:0.6.0-M2:jar" external-system-id="SBT">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/io/chrisdavenport/epimetheus-http4s_2.13/0.6.0-M2/epimetheus-http4s_2.13-0.6.0-M2.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/io/chrisdavenport/epimetheus-http4s_2.13/0.6.0-M2/epimetheus-http4s_2.13-0.6.0-M2-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

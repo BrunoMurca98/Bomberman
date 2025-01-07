@@ -1,23 +1,36 @@
-import scala.io.StdIn.readLine
-import java.util.{Timer, TimerTask}
+import cats.effect._
+import cats.syntax.all._
 
-// Directions for movement
-val directions = Map(
-  'w' -> (-1, 0), // Up
-  's' -> (1, 0),  // Down
-  'a' -> (0, -1), // Left
-  'd' -> (0, 1)   // Right
-)
+import scala.concurrent.duration._
+import java.util.Timer
+import java.util.TimerTask
 
 // Player representation
 case class Player(var x: Int, var y: Int)
 
-// Bomb representation with timestamp for placement
-case class Bomb(var x: Int, var y: Int, var placedAt: Long, var exploded: Boolean = false)
+// Bomb representation with turns until explosion
+case class Bomb(var x: Int, var y: Int, var turnsUntilExplosion: Int, var exploded: Boolean = false, var explosionTurn: Option[Int] = None)
+
+// GameState representation with added `turns` field and game over flag
+case class GameState(player: Player, grid: Array[Array[Char]], bombs: List[Bomb], turns: Int = 0, gameOver: Boolean = false, explosionClearTurn: Option[Int] = None)
+
+// Commands to modify the state
+sealed trait Command
+case class Move(direction: Char) extends Command
+case object PlaceBomb extends Command
 
 object Bomberman {
+
+  // Directions for movement
+  val directions = Map(
+    'w' -> (-1, 0), // Up
+    's' -> (1, 0),  // Down
+    'a' -> (0, -1), // Left
+    'd' -> (0, 1)   // Right
+  )
+
   // The game map, represented as a 2D array of chars
-  val grid: Array[Array[Char]] = Array(
+  val initialGrid: Array[Array[Char]] = Array(
     Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
     Array('#', '.', '.', '.', '.', '#', '.', '.', '.', '#'),
     Array('#', '.', '.', '.', '.', '#', '.', '.', '.', '#'),
@@ -25,24 +38,22 @@ object Bomberman {
     Array('#', '#', '#', '#', '.', '#', '#', '.', '#', '#'),
     Array('#', '.', '.', '.', '.', '#', '.', '.', '.', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '#'),
-    Array('#', '.', '.', '.', '.', '#', '.', '.', '.', '#'),
+    Array('#', '.', '#', '.', '.', '#', '.', '.', '.', '#'),
     Array('#', '.', '.', '.', '.', '#', '.', '.', '.', '#'),
     Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#')
   )
 
-  // List to track bombs
-  var bombs: List[Bomb] = List()
-
-  // Display the grid
-  def displayGrid(player: Player): Unit = {
+  // Display the grid (side-effectful)
+  def displayGrid(state: GameState): IO[Unit] = IO {
+    println(s"Turn: ${state.turns}")
     println("Bomberman Game:")
-    for (i <- 0 until grid.length) {
-      for (j <- 0 until grid(i).length) {
+    for (i <- state.grid.indices) {
+      for (j <- state.grid(i).indices) {
         // If it's the player's position, mark it as '1'
-        if (i == player.x && j == player.y) {
+        if (i == state.player.x && j == state.player.y) {
           print(" 1 ")
         } else {
-          print(s" ${grid(i)(j)} ")
+          print(s" ${state.grid(i)(j)} ")
         }
       }
       println()
@@ -50,173 +61,171 @@ object Bomberman {
   }
 
   // Handle player movement
-  def movePlayer(player: Player, direction: Char): Unit = {
+  def movePlayer(state: GameState, direction: Char): GameState = {
     directions.get(direction) match {
       case Some((dx, dy)) =>
-        val newX = player.x + dx
-        val newY = player.y + dy
-        if (newX >= 0 && newX < grid.length && newY >= 0 && newY < grid(newX).length && grid(newX)(newY) != '#') {
-          // Clear the player's old position
-          grid(player.x)(player.y) = '.'
-
+        val newX = state.player.x + dx
+        val newY = state.player.y + dy
+        if (newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length && state.grid(newX)(newY) != '#') {
           // Update the player's position
-          player.x = newX
-          player.y = newY
-
-          // Mark the new position with the player (1)
-          grid(player.x)(player.y) = '1'
+          state.grid(state.player.x)(state.player.y) = '.'
+          state.player.x = newX
+          state.player.y = newY
+          state.grid(state.player.x)(state.player.y) = '1'
         }
       case None => println("Invalid direction!")
     }
+    state
   }
 
-  // Place a bomb at the player's position
-  def placeBomb(player: Player): Unit = {
-    // Allow bomb placement even if the player's position is marked as '1'
-    val currentTime = System.currentTimeMillis()
-    val newBomb = Bomb(player.x, player.y, currentTime)
-    bombs = newBomb :: bombs // Add bomb with the current time
+  // Place a bomb at the player's position (side-effectful)
+  def placeBomb(state: GameState): IO[GameState] = IO {
+    val newBomb = Bomb(state.player.x, state.player.y, turnsUntilExplosion = 3)  // Set explosion delay to 3 turns
+    val updatedBombs = newBomb :: state.bombs // Add bomb to the list of bombs
 
     // Place the bomb at the player's current position
-    grid(player.x)(player.y) = 'B' // Place the bomb on the grid at the player's position
+    state.grid(state.player.x)(state.player.y) = 'B'
 
-    println(s"Bomb placed at (${player.x}, ${player.y})")
+    println(s"Bomb placed at (${state.player.x}, ${state.player.y})")
 
-    // Schedule the bomb to explode after 3 seconds
-    val timer = new Timer()
-    val timerTask = new TimerTask {
-      def run(): Unit = {
-        // Explode the bomb after 3 seconds
-        explodeBomb(newBomb, player)
-      }
-    }
-    timer.schedule(timerTask, 3000) // Schedule to run after 3 seconds
+    // Return the updated state with bombs
+    state.copy(bombs = updatedBombs)
   }
 
   // Explosion logic (with radius of 1 on both X and Y axes)
-  def explodeBomb(bomb: Bomb, player: Player): Unit = {
+  def explodeBomb(bomb: Bomb, state: GameState): GameState = {
     if (!bomb.exploded) {
       // Mark the bomb location with 'X' to represent explosion
-      markExplosion(bomb.x, bomb.y) // Mark the bomb's own location
+      markExplosion(bomb.x, bomb.y, state)
 
       // Mark adjacent cells in the explosion radius (up, down, left, right)
-      markExplosion(bomb.x - 1, bomb.y) // Up
-      markExplosion(bomb.x + 1, bomb.y) // Down
-      markExplosion(bomb.x, bomb.y - 1) // Left
-      markExplosion(bomb.x, bomb.y + 1) // Right
+      markExplosion(bomb.x - 1, bomb.y, state) // Up
+      markExplosion(bomb.x + 1, bomb.y, state) // Down
+      markExplosion(bomb.x, bomb.y - 1, state) // Left
+      markExplosion(bomb.x, bomb.y + 1, state) // Right
 
       bomb.exploded = true // Mark as exploded
+      bomb.explosionTurn = Some(state.turns) // Track the turn the explosion happens
       println(s"Bomb exploded at (${bomb.x}, ${bomb.y})")
 
-      // Check if the player is caught in the explosion
-      if (checkGameOver(player)) { // Check if the player is caught
-        println("You were caught in an explosion! Game over.")
-        System.exit(0) // Exit the game immediately
+      // Check if the player is in the explosion radius
+      if (isPlayerInExplosion(bomb.x, bomb.y, state)) {
+        println("Player caught in the explosion! Game Over!")
+        return state.copy(gameOver = true) // Set the game to over and return the updated state
       }
-
-      // Schedule the bomb to be cleared and the explosion zone to be cleared after 3 seconds
-      val timer = new Timer()
-      val clearExplosionTask = new TimerTask {
-        def run(): Unit = {
-          clearExplosion(bomb) // Clear the explosion marks (X) from the grid
-        }
-      }
-      timer.schedule(clearExplosionTask, 3000) // Schedule to run after 3 seconds
     }
+    state
   }
 
   // Mark a cell as exploded if within bounds
-  def markExplosion(x: Int, y: Int): Unit = {
-    if (x >= 0 && x < grid.length && y >= 0 && y < grid(x).length && grid(x)(y) != '#') {
-      grid(x)(y) = 'X' // Mark the cell as exploded
+  def markExplosion(x: Int, y: Int, state: GameState): Unit = {
+    if (x >= 0 && x < state.grid.length && y >= 0 && y < state.grid(x).length && state.grid(x)(y) != '#') {
+      state.grid(x)(y) = 'X' // Mark the cell as exploded
     }
   }
 
-  // Clear the explosion area (remove 'X' marks) after 3 seconds
-  def clearExplosion(bomb: Bomb): Unit = {
-    // Clear the explosion marks around the bomb and its adjacent cells
-    markExplosionClear(bomb.x, bomb.y) // Clear the bomb's own location
-    markExplosionClear(bomb.x - 1, bomb.y) // Up
-    markExplosionClear(bomb.x + 1, bomb.y) // Down
-    markExplosionClear(bomb.x, bomb.y - 1) // Left
-    markExplosionClear(bomb.x, bomb.y + 1) // Right
+  // Check if the player is caught in the explosion radius
+  def isPlayerInExplosion(bombX: Int, bombY: Int, state: GameState): Boolean = {
+    val playerX = state.player.x
+    val playerY = state.player.y
 
-    // Clear the bomb itself from the grid
-    clearBomb(bomb)
+    // Check if player is within the explosion radius
+    (playerX == bombX && playerY == bombY) ||
+      (playerX == bombX - 1 && playerY == bombY) || // Up
+      (playerX == bombX + 1 && playerY == bombY) || // Down
+      (playerX == bombX && playerY == bombY - 1) || // Left
+      (playerX == bombX && playerY == bombY + 1)     // Right
   }
 
-  // Clear a single explosion mark ('X') if within bounds
-  def markExplosionClear(x: Int, y: Int): Unit = {
+  // Check if any bombs should explode based on turns
+  def checkBombs(state: GameState): GameState = {
+    state.bombs.filterNot(_.exploded).foldLeft(state) { (updatedState, bomb) =>
+      // Decrement the turns until explosion
+      if (bomb.turnsUntilExplosion > 0) {
+        bomb.turnsUntilExplosion -= 1
+      }
+      // If it's time for the bomb to explode
+      if (bomb.turnsUntilExplosion == 0) {
+        println(s"Bomb at (${bomb.x}, ${bomb.y}) exploded!")
+        explodeBomb(bomb, updatedState) // Update the state after explosion
+      } else {
+        updatedState
+      }
+    }
+  }
+
+  // Clear explosion marks ('X') after a certain number of turns
+  def clearExplosionMarks(state: GameState): GameState = {
+    val turnToClear = state.turns - 1 // The turn after the explosion
+    val updatedGrid = state.grid.map(_.clone()) // Copy the grid to modify it
+
+    // Clear the 'X' marks if it's time to clear them
+    state.bombs.filter(bomb => bomb.explosionTurn.contains(turnToClear)).foreach { bomb =>
+      // Clear explosion marks around the bomb
+      clearExplosion(bomb.x, bomb.y, updatedGrid)
+      clearExplosion(bomb.x - 1, bomb.y, updatedGrid) // Up
+      clearExplosion(bomb.x + 1, bomb.y, updatedGrid) // Down
+      clearExplosion(bomb.x, bomb.y - 1, updatedGrid) // Left
+      clearExplosion(bomb.x, bomb.y + 1, updatedGrid) // Right
+    }
+
+    state.copy(grid = updatedGrid) // Return the updated state
+  }
+
+  // Clear a single explosion mark if within bounds
+  def clearExplosion(x: Int, y: Int, grid: Array[Array[Char]]): Unit = {
     if (x >= 0 && x < grid.length && y >= 0 && y < grid(x).length && grid(x)(y) == 'X') {
-      grid(x)(y) = '.' // Remove explosion mark
+      grid(x)(y) = '.' // Clear the 'X' mark
     }
   }
 
-  // Clear the bomb from the grid
-  def clearBomb(bomb: Bomb): Unit = {
-    grid(bomb.x)(bomb.y) = '.' // Remove bomb from the grid
-    bombs = bombs.filterNot(b => b == bomb) // Remove from the bomb list
-    println(s"Bomb cleared at (${bomb.x}, ${bomb.y})")
-  }
+  // Main game loop (side-effectful)
+  def gameLoop(state: GameState): IO[Unit] = {
+    def loop(state: GameState): IO[Unit] = {
+      if (state.gameOver) {
+        IO(println("Game Over! You have died."))
+      } else {
+        val newState = checkBombs(state) // Check for bombs that should explode
+        val finalState = clearExplosionMarks(newState) // Clear explosion marks after a turn
 
-  // Remove exploded bombs from the list
-  def removeExplodedBombs(): Unit = {
-    bombs = bombs.filterNot(_.exploded) // Remove exploded bombs
-  }
+        displayGrid(finalState) *> IO {
+          println("Enter move (w/a/s/d to move, E to place bomb):")
+        } *> IO.readLine.flatMap {
+          case input if input.length == 1 && directions.contains(input.head) =>
+            val updatedState = movePlayer(finalState, input.head) // Move the player
+            val nextState = updatedState.copy(turns = updatedState.turns + 1) // Increment turn count
+            loop(nextState) // Continue to next turn
 
-  // Check if the bomb exploded at the same position as the player
-  def checkGameOver(player: Player): Boolean = {
-    // Loop over all bombs and check if the player is at the explosion location
-    bombs.exists { bomb =>
-      // If the bomb exploded and the player is in any of the explosion radius cells (bomb + adjacent)
-      (bomb.exploded &&
-        (bomb.x == player.x && bomb.y == player.y || // Player is at bomb location
-          bomb.x - 1 == player.x && bomb.y == player.y || // Player is up from bomb
-          bomb.x + 1 == player.x && bomb.y == player.y || // Player is down from bomb
-          bomb.x == player.x && bomb.y - 1 == player.y || // Player is left of bomb
-          bomb.x == player.x && bomb.y + 1 == player.y)) // Player is right of bomb
-    }
-  }
+          case "E" | "e" =>
+            placeBomb(finalState).flatMap { updatedState =>
+              val nextState = updatedState.copy(turns = updatedState.turns + 1) // Increment turn count after placing bomb
+              loop(nextState)
+            }
 
-  // Read a single key press (E or other)
-  def readKeyPress(): String = {
-    val input = readLine().trim
-    input
-  }
-
-  // Main game loop
-  def mainLoop(): Unit = {
-    val player = Player(1, 1) // Starting player position (1, 1)
-
-    // Initialize the grid with walls and set the player's starting position
-    grid(player.x)(player.y) = '1' // Mark the player's starting position with '1'
-
-    // Game loop
-    while (true) {
-      // Display the grid with player as '1'
-      displayGrid(player)
-
-      println("Enter move (w/a/s/d to move, E to place bomb):")
-
-      // Read user input (single key press)
-      val input = readKeyPress()
-
-      input match {
-        case "w" | "a" | "s" | "d" => movePlayer(player, input.head) // Only pass the first character
-        case "E" | "e" => placeBomb(player) // E to place bomb (case-insensitive)
-        case _ => println("Invalid command!")
-      }
-
-      // Compute gameOver condition
-      val gameOver = checkGameOver(player)
-
-      if (gameOver) {
-        println("You were caught in an explosion! Game over.")
-        return // End the game if the player is caught in an explosion
+          case _ =>
+            IO {
+              println("Invalid command!")
+              loop(finalState)
+            }
+        }
       }
     }
+    loop(state) // Start the game loop
+  }
+
+
+  // Game state initializer
+  def initialState: GameState = GameState(Player(1, 1), initialGrid, List(), turns = 0)
+
+  // Start the game
+  def startGame(): IO[Unit] = {
+    gameLoop(initialState)
   }
 }
-object BombermanApp extends App {
-  Bomberman.mainLoop() // Start the game loop
+
+// The main application entry point
+object BombermanApp extends IOApp.Simple {
+  def run: IO[Unit] = {
+    Bomberman.startGame()
+  }
 }
