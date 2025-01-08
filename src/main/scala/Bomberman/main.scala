@@ -81,7 +81,7 @@ object Bomberman {
     state.copy(firstMove = true) // Mark that the player has moved
   }
 
-  // Place a bomb at the player's position (side-effectful)
+  // Place a bomb at the player's position (side-effectful) 
   def placeBomb(state: GameState): IO[GameState] = IO {
     val newBomb = Bomb(state.player.x, state.player.y, turnsUntilExplosion = 4)  // Set explosion delay to 4 turns
     val updatedBombs = newBomb :: state.bombs // Add bomb to the list of bombs
