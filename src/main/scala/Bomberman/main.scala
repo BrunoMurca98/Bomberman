@@ -110,6 +110,37 @@ object Bomberman {
     }
   }
 
+  // Check if any bombs should explode based on turns
+  def checkBombs(state: GameState): GameState = {
+    // Check for bombs that should explode or clear
+    val stateAfterBombs = state.bombs.foldLeft(state) { (updatedState, bomb) =>
+      // Decrement the turns until explosion
+      if (bomb.turnsUntilExplosion > 0) {
+        bomb.turnsUntilExplosion -= 1
+      }
+      // If it's time for the bomb to explode
+      if (bomb.turnsUntilExplosion == 0 && !bomb.exploded) {
+        println(s"Bomb at (${bomb.x}, ${bomb.y}) exploded!")
+        explodeBomb(bomb, updatedState) // Update the state after explosion
+      } else {
+        updatedState
+      }
+    }
+
+    // If it's time to clear the explosion
+    stateAfterBombs.explosionClearTurn match {
+      case Some(clearTurn) if stateAfterBombs.turns >= clearTurn =>
+        // Clear the explosion marks (replace 'X' with '.')
+        val newGrid = stateAfterBombs.grid.map(_.map {
+          case 'X' => '.' // Replace 'X' with '.'
+          case other => other
+        })
+        stateAfterBombs.copy(grid = newGrid, explosionClearTurn = None) // Reset the clear turn
+      case _ => stateAfterBombs
+    }
+  }
+
+
 
   // Explosion logic (with radius of 2 on both X and Y axes)
   def explodeBomb(bomb: Bomb, state: GameState): GameState = {
@@ -177,38 +208,6 @@ object Bomberman {
       (playerX == bombX && playerY == bombY + 1)     // Right 1
   }
 
-  // Check if any bombs should explode based on turns
-  def checkBombs(state: GameState): GameState = {
-    // Check for bombs that should explode or clear
-    val stateAfterBombs = state.bombs.foldLeft(state) { (updatedState, bomb) =>
-      // Decrement the turns until explosion
-      if (bomb.turnsUntilExplosion > 0) {
-        bomb.turnsUntilExplosion -= 1
-      }
-      // If it's time for the bomb to explode
-      if (bomb.turnsUntilExplosion == 0 && !bomb.exploded) {
-        println(s"Bomb at (${bomb.x}, ${bomb.y}) exploded!")
-        explodeBomb(bomb, updatedState) // Update the state after explosion
-      } else {
-        updatedState
-      }
-    }
-
-    // If it's time to clear the explosion
-    stateAfterBombs.explosionClearTurn match {
-      case Some(clearTurn) if stateAfterBombs.turns >= clearTurn =>
-        // Clear the explosion marks (replace 'X' with '.')
-        val newGrid = stateAfterBombs.grid.map(_.map {
-          case 'X' => '.' // Replace 'X' with '.'
-          case other => other
-        })
-        stateAfterBombs.copy(grid = newGrid, explosionClearTurn = None) // Reset the clear turn
-      case _ => stateAfterBombs
-    }
-  }
-
-
-
   // Check if the monster is within the explosion radius
   def isInExplosionRadius(monsterX: Int, monsterY: Int, bombX: Int, bombY: Int): Boolean = {
     (monsterX == bombX && monsterY == bombY) ||
@@ -264,20 +263,17 @@ object Bomberman {
       if (state.gameOver) {
         IO(println("Game Over!"))
       } else {
-        // Update the state to check for bombs and explosions before displaying the grid
-        val stateWithBombsChecked = checkBombs(state)
-
         // Display the grid and turn number
-        displayGrid(stateWithBombsChecked) *> IO {
-          println(s"Turn: ${stateWithBombsChecked.turns}")
+        displayGrid(state) *> IO {
+          println(s"Turn: ${state.turns}")
         } *> IO {
           // Check if the player is adjacent to any monster after displaying the grid
-          val updatedState = if (isPlayerNearMonster(stateWithBombsChecked.player.x, stateWithBombsChecked.player.y, stateWithBombsChecked.monsters)) {
+          val updatedState = if (isPlayerNearMonster(state.player.x, state.player.y, state.monsters)) {
             // If the player is adjacent to a monster, end the game
             println("You are too close to a monster!")
-            stateWithBombsChecked.copy(gameOver = true)
+            state.copy(gameOver = true)
           } else {
-            stateWithBombsChecked
+            state
           }
 
           updatedState
@@ -293,14 +289,23 @@ object Bomberman {
                 // After player moves, increment the turn and move monsters
                 val updatedTurnState = updatedState.copy(turns = updatedState.turns + 1)
                 val newStateAfterMonsters = moveMonsters(updatedTurnState) // Move monsters after player move
-                loop(newStateAfterMonsters) // Continue to next turn after valid input
+                // Check bombs after turn increment
+                val stateWithBombsChecked = checkBombs(newStateAfterMonsters)
+                loop(stateWithBombsChecked) // Continue to next turn after valid input
 
               case "E" | "e" =>
                 // Handle bomb placement
                 placeBomb(finalState).flatMap { updatedState =>
-                  // After placing a bomb, increment the turn
-                  val updatedTurnState = updatedState.copy(turns = updatedState.turns + 1)
-                  loop(updatedTurnState) // Continue to next turn after placing bomb
+                  // Only increment the turn if the bomb was placed successfully
+                  if (updatedState != finalState) {
+                    // Bomb was placed successfully, so increment turn
+                    val updatedTurnState = updatedState.copy(turns = updatedState.turns + 1)
+                    val stateWithBombsChecked = checkBombs(updatedTurnState)
+                    loop(stateWithBombsChecked) // Continue to next turn after placing bomb
+                  } else {
+                    // If no bomb was placed (invalid bomb placement), stay at the same turn
+                    loop(finalState)
+                  }
                 }
 
               case _ =>
@@ -323,7 +328,7 @@ object Bomberman {
   // Game state initializer with monsters
   def initialState: GameState = {
     val monsters = List(Monster(3, 2), Monster(4, 2)) // Two monsters at initial positions
-    GameState(Player(1, 18), monsters, initialGrid, List(), turns = 0)
+    GameState(Player(1, 8), monsters, initialGrid, List(), turns = 0)
   }
 
   // Start the game
