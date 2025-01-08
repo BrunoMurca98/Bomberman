@@ -16,17 +16,7 @@ case class Monster(var x: Int, var y: Int)
 case class Bomb(var x: Int, var y: Int, var turnsUntilExplosion: Int, var exploded: Boolean = false, var explosionTurn: Option[Int] = None)
 
 // GameState representation with added monsters, game over flag, and player move flag
-case class GameState(
-                      player: Player,
-                      monsters: List[Monster],
-                      grid: Array[Array[Char]],
-                      bombs: List[Bomb],
-                      turns: Int = 0,
-                      gameOver: Boolean = false,
-                      firstMove: Boolean = false,
-                      explosionClearTurn: Option[Int] = None,
-                      bombPlaced: Boolean = false // Track if a bomb is placed
-                    )
+case class GameState(player: Player, monsters: List[Monster], grid: Array[Array[Char]], bombs: List[Bomb], turns: Int = 0, gameOver: Boolean = false, firstMove: Boolean = false, explosionClearTurn: Option[Int] = None)
 
 sealed trait Command
 case class Move(direction: Char) extends Command
@@ -93,23 +83,17 @@ object Bomberman {
 
   // Place a bomb at the player's position (side-effectful)
   def placeBomb(state: GameState): IO[GameState] = IO {
-    if (state.bombPlaced) {
-      println("You can only place one bomb at a time! Wait for the previous one to explode.")
-      state // Don't place a new bomb, just return the current state
-    } else {
-      val newBomb = Bomb(state.player.x, state.player.y, turnsUntilExplosion = 4)  // Set explosion delay to 4 turns
-      val updatedBombs = newBomb :: state.bombs // Add bomb to the list of bombs
+    val newBomb = Bomb(state.player.x, state.player.y, turnsUntilExplosion = 4)  // Set explosion delay to 4 turns
+    val updatedBombs = newBomb :: state.bombs // Add bomb to the list of bombs
 
-      // Place the bomb at the player's current position
-      state.grid(state.player.x)(state.player.y) = 'B'
+    // Place the bomb at the player's current position
+    state.grid(state.player.x)(state.player.y) = 'B'
 
-      println(s"Bomb placed at (${state.player.x}, ${state.player.y})")
+    println(s"Bomb placed at (${state.player.x}, ${state.player.y})")
 
-      // Update the state to reflect that a bomb has been placed
-      state.copy(bombs = updatedBombs, bombPlaced = true) // Set bombPlaced to true
-    }
+    // Return the updated state with bombs
+    state.copy(bombs = updatedBombs)
   }
-
 
   // Explosion logic (with radius of 2 on both X and Y axes)
   def explodeBomb(bomb: Bomb, state: GameState): GameState = {
@@ -141,12 +125,11 @@ object Bomberman {
         isInExplosionRadius(m.x, m.y, bomb.x, bomb.y)
       )
 
-      // Reset the bombPlaced flag after the bomb explodes
+      // Return the updated state with the bomb removed and the monsters removed
       return state.copy(
         monsters = monstersAfterExplosion,
         bombs = updatedBombs,  // Remove the exploded bomb
-        explosionClearTurn = Some(state.turns + 1), // Set the turn when to clear the explosion
-        bombPlaced = false // Allow placing a new bomb after the explosion
+        explosionClearTurn = Some(state.turns + 1) // Set the turn when to clear the explosion
       )
     }
     state
@@ -177,6 +160,7 @@ object Bomberman {
       (playerX == bombX && playerY == bombY + 1)     // Right 1
   }
 
+
   // Check if any bombs should explode based on turns
   def checkBombs(state: GameState): GameState = {
     // Check for bombs that should explode or clear
@@ -206,7 +190,6 @@ object Bomberman {
       case _ => stateAfterBombs
     }
   }
-
 
 
   // Check if the monster is within the explosion radius
@@ -264,23 +247,23 @@ object Bomberman {
       if (state.gameOver) {
         IO(println("Game Over!"))
       } else {
-        // Update the state to check for bombs and explosions before displaying the grid
-        val stateWithBombsChecked = checkBombs(state)
+        // First, display the grid and increment the turn
+        val newState = checkBombs(state) // Check for bombs that should explode
+        val afterMonsterMoveState = moveMonsters(newState) // Move monsters randomly if player has moved
 
-        // Display the grid and turn number
-        displayGrid(stateWithBombsChecked) *> IO {
-          println(s"Turn: ${stateWithBombsChecked.turns}")
+        // Display the grid after monster move and increment the turn
+        displayGrid(afterMonsterMoveState) *> IO {
+          println(s"Turn: ${afterMonsterMoveState.turns + 1}")
         } *> IO {
+          val updatedState = afterMonsterMoveState.copy(turns = afterMonsterMoveState.turns + 1)
           // Check if the player is adjacent to any monster after displaying the grid
-          val updatedState = if (isPlayerNearMonster(stateWithBombsChecked.player.x, stateWithBombsChecked.player.y, stateWithBombsChecked.monsters)) {
+          if (isPlayerNearMonster(updatedState.player.x, updatedState.player.y, updatedState.monsters)) {
             // If the player is adjacent to a monster, end the game
             println("You are too close to a monster!")
-            stateWithBombsChecked.copy(gameOver = true)
+            updatedState.copy(gameOver = true)
           } else {
-            stateWithBombsChecked
+            updatedState
           }
-
-          updatedState
         } flatMap { finalState =>
           if (finalState.gameOver) {
             IO(println("Game Over!"))
@@ -288,42 +271,34 @@ object Bomberman {
             // Allow the player to make a move or place a bomb
             IO(println("Enter move (w/a/s/d to move, E to place bomb):")) *> IO.readLine.flatMap {
               case input if input.length == 1 && directions.contains(input.head) =>
-                // Handle valid player movement
+                // Move the player
                 val updatedState = movePlayer(finalState, input.head)
-                // After player moves, increment the turn and move monsters
-                val updatedTurnState = updatedState.copy(turns = updatedState.turns + 1)
-                val newStateAfterMonsters = moveMonsters(updatedTurnState) // Move monsters after player move
-                loop(newStateAfterMonsters) // Continue to next turn after valid input
+                val newTurnState = updatedState.copy(turns = updatedState.turns + 1) // Increment turn
+                loop(newTurnState) // Continue to next turn
 
               case "E" | "e" =>
-                // Handle bomb placement
                 placeBomb(finalState).flatMap { updatedState =>
-                  // After placing a bomb, increment the turn
-                  val updatedTurnState = updatedState.copy(turns = updatedState.turns + 1)
-                  loop(updatedTurnState) // Continue to next turn after placing bomb
+                  val newTurnState = updatedState.copy(turns = updatedState.turns + 1) // Increment turn
+                  loop(newTurnState) // Continue to next turn after placing bomb
                 }
 
               case _ =>
-                // Handle invalid input: don't move monsters, don't increment turn, just re-prompt
                 IO {
-                  println("Invalid command! Please enter a valid command.")
-                } *> loop(finalState) // Return to the same state, do not change the state
+                  println("Invalid command!")
+                  loop(finalState)
+                }
             }
           }
         }
       }
     }
-
     loop(state) // Start the game loop
   }
-
-
-
 
   // Game state initializer with monsters
   def initialState: GameState = {
     val monsters = List(Monster(3, 2), Monster(4, 2)) // Two monsters at initial positions
-    GameState(Player(1, 18), monsters, initialGrid, List(), turns = 0)
+    GameState(Player(1, 1), monsters, initialGrid, List(), turns = 0)
   }
 
   // Start the game
