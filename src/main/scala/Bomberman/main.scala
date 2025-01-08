@@ -160,7 +160,7 @@ object Bomberman {
       (playerX == bombX && playerY == bombY + 1)     // Right 1
   }
 
-  // Check if any bombs should explode based on turns
+ 
   // Check if any bombs should explode based on turns
   def checkBombs(state: GameState): GameState = {
     // Check for bombs that should explode or clear
