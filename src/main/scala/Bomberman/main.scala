@@ -49,8 +49,8 @@ object Bomberman {
   val initialGrid: Array[Array[Char]] = Array(
     Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#' ,'#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '.','.', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','.', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','.', '#'),
+    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '*', '.', '.', '#','.', '#'),
+    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '*', '*', '.', '*', '*', '#','.', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','#', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','.', '#'),
     Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#' ,'#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
@@ -85,6 +85,7 @@ object Bomberman {
     }
   }
 
+
   // Handle player movement
   def movePlayer(state: GameState, direction: Char): GameState = {
     directions.get(direction.toLower) match {
@@ -93,32 +94,34 @@ object Bomberman {
         val newY = state.player.y + dy
 
         // Check if the new position is within bounds and not a wall
-        if (newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length && state.grid(newX)(newY) != '#') {
+        if (newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length) {
+          state.grid(state.player.x)(state.player.y) = '.'  // Clear the old position
 
-          // Check if the new position contains a bomb (that hasn't exploded yet)
-          val bombLocations = state.bombs.filterNot(_.exploded).map(bomb => (bomb.x, bomb.y)).toSet
-          if (bombLocations.contains((newX, newY))) {
-            // If the new position contains a bomb, don't allow the move
-            println("You cannot move into a bomb location!")
-            state
-          } else {
-            // If valid move, update the player position
-            state.grid(state.player.x)(state.player.y) = '.'  // Clear the old position
+          // Check if the new position is a valid move (not a wall or breakable wall)
+          if (state.grid(newX)(newY) != '#' && state.grid(newX)(newY) != '*') {
             val newPlayer = state.player.copy(x = newX, y = newY)
-            state.grid(newX)(newY) = '1'  // Mark the new position
+            state.grid(newX)(newY) = '1'  // Mark the new position of the player
 
-            state.copy(player = newPlayer)  // Update the state with the new player position
+            // Update the state with the new player position
+            state.copy(player = newPlayer)
+          } else {
+            // Player cannot move through walls (both breakable and unbreakable)
+            println("You can't move through walls!")
+            state  // Return the same state (no change)
           }
         } else {
-          // Invalid move, return the same state
-          state
+          // Invalid move (out of bounds)
+          println("You can't move outside the grid!")
+          state  // Return the same state (no change)
         }
 
       case None =>
         println("Invalid direction!")
-        state
+        state  // Return the same state (no change)
     }
   }
+
+
 
 
 
@@ -205,8 +208,14 @@ object Bomberman {
 
       // Check if the player is in the explosion radius
       if (isPlayerInExplosion(bomb.x, bomb.y, state)) {
-        println("Player caught in the explosion! Game Over!")
+        println("Player caught in the explosion!")
         return state.copy(gameOver = true) // Set the game to over and return the updated state
+      }
+
+      // If no monsters are left, the player wins!
+      if (monstersAfterExplosion.isEmpty) {
+        println("You killed all the monsters! You win!")
+        return state.copy(gameOver = true) // Set the game to over and declare victory
       }
 
       // Reset the bombPlaced flag after the bomb explodes
@@ -220,6 +229,8 @@ object Bomberman {
       state // If the bomb has already exploded, return the state as is
     }
   }
+
+
 
 
 
@@ -254,16 +265,24 @@ object Bomberman {
 
   // Mark a cell as exploded if within bounds and not a wall
   def markExplosion(x: Int, y: Int, state: GameState): Unit = {
-    if (x >= 0 && x < state.grid.length && y >= 0 && y < state.grid(x).length && state.grid(x)(y) != '#') {
-      state.grid(x)(y) = 'X' // Mark the cell as exploded
+    if (x >= 0 && x < state.grid.length && y >= 0 && y < state.grid(x).length) {
+      state.grid(x)(y) match {
+        case '#' => // Do nothing if it's an unbreakable wall
+        case '*' =>
+          state.grid(x)(y) = '.' // Break the wall, turn '*' into '.'
+        case _ =>
+          state.grid(x)(y) = 'X' // Mark the explosion
+      }
     }
   }
+
 
   // Function to handle marking explosion in one direction (up, down, left, or right)
   def markExplosionInDirection(startX: Int, startY: Int, dx: Int, dy: Int, state: GameState): Unit = {
     var x = startX
     var y = startY
     var distance = 0
+    var wallDestroyed = false  // Flag to track if a breakable wall has been destroyed
 
     // Move in the direction (dx, dy) until we hit a wall or reach the radius limit
     while (distance < 2) { // Only move up to 2 cells in any direction
@@ -276,9 +295,21 @@ object Bomberman {
         return // Stop if it's out of bounds or a wall
       }
 
-      markExplosion(x, y, state) // Mark the cell as exploded
+      if (state.grid(x)(y) == '*') { // Check if it's a breakable wall
+        if (!wallDestroyed) { // Only destroy one breakable wall in this direction
+          // Mark the breakable wall as destroyed with 'X'
+          state.grid(x)(y) = 'X' // Replace * with X to indicate destruction
+          wallDestroyed = true  // Mark that a breakable wall has been destroyed
+        }
+        return // Stop after destroying the first breakable wall in this direction
+      }
+
+      // Mark the cell as exploded (not a wall or breakable wall)
+      state.grid(x)(y) = 'X' // Represent explosion with 'X'
     }
   }
+
+
 
 
 
@@ -356,7 +387,12 @@ object Bomberman {
   def gameLoop(state: GameState): IO[Unit] = {
     def loop(state: GameState): IO[Unit] = {
       if (state.gameOver) {
-        IO(println("Game Over!"))
+        // If the game is over (either player lost or won), print the result
+        if (state.monsters.isEmpty) {
+          IO(println("You killed all the monsters! You win!"))
+        } else {
+          IO(println("Game Over!"))
+        }
       } else {
         // Display the grid and turn number
         displayGrid(state) *> IO {
@@ -424,9 +460,10 @@ object Bomberman {
 
 
 
+
   // Game state initializer with monsters
   def initialState: GameState = {
-    val monsters = List(Monster(3, 18), Monster(5, 18))  // Two monsters at initial positions
+    val monsters = List(Monster(5, 18))  // Two monsters at initial positions
     GameState(Player(1, 18), monsters, initialGrid, List(), turns = 0, bombPlacedThisTurn = false)
   }
 
