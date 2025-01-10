@@ -4,7 +4,6 @@ class Player {
 
 /*
 
-// freeze time 2 turns(pickup and next)
 // hide the power ups
 // make the monsters go after the player(maybe)
 // more bombs(maybe)

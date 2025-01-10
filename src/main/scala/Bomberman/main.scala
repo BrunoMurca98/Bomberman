@@ -20,7 +20,7 @@ case class Bomb(x: Int, y: Int, turnsUntilExplosion: Int, exploded: Boolean = fa
 case class GameState(
                       player: Player,
                       monsters: List[Monster],
-                      grid: Array[Array[Char]],
+                      grid: Array[Array[String]],
                       bombs: List[Bomb],
                       turns: Int = 0,
                       gameOver: Boolean = false,
@@ -44,14 +44,14 @@ object Bomberman {
   )
 
   // The game map, represented as a 2D array of chars
-  val initialGrid: Array[Array[Char]] = Array(
-    Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#' ,'#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', 'T', '.', '.', '.','.', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '*', '.', '.', '#','.', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '*', '*', '.', '*', '*', '#','.', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','#', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','.', '#'),
-    Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#' ,'#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
+  val initialGrid: Array[Array[String]] = Array(
+    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#" , "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
+    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", "F", ".", "T", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", ".", ".", "#", ".", "#"),
+    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", "*", "*", ".", "*", "*", "#", ".", "#"),
+    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", "#", "#"),
+    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#"),
+    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#" , "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
   )
 
   // Display the grid (side-effectful)
@@ -65,7 +65,7 @@ object Bomberman {
         bombToDisplay match {
           case Some(bomb) if state.turns - bomb.turnPlaced >= 2 =>
             // Mark the bomb location with 'B' if it's been 2 turns since placement and it hasn't exploded
-            print(" B ")
+            print(" \uD83D\uDCA3")
           case _ =>
             if (i == state.player.x && j == state.player.y) {
               // If it's the player's position, mark it as '1'
@@ -93,20 +93,26 @@ object Bomberman {
 
         // Check if the new position is within bounds and not a wall or bomb
         if (newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length) {
-          state.grid(state.player.x)(state.player.y) = '.'  // Clear the old position
+          state.grid(state.player.x)(state.player.y) = "."  // Clear the old position
 
           // Check if the new position is a valid move (not a wall, breakable wall, or bomb)
-          if (state.grid(newX)(newY) != '#' && state.grid(newX)(newY) != '*' && !state.bombs.exists(b => b.x == newX && b.y == newY && !b.exploded)) {
+          if (state.grid(newX)(newY) != "#" && state.grid(newX)(newY) != "*" && !state.bombs.exists(b => b.x == newX && b.y == newY && !b.exploded)) {
             val newPlayer = state.player.copy(x = newX, y = newY)
 
             // If the player lands on a freeze power-up, increase freeze turns
-            if (state.grid(newX)(newY) == 'T') {
+            if (state.grid(newX)(newY) == "T") {
               println("Freeze Power-Up Collected! Monsters are frozen for 2 turns! ❄️")
-              state.grid(newX)(newY) = '.'  // Remove the power-up from the grid
+              state.grid(newX)(newY) = "."  // Remove the power-up from the grid
               return state.copy(player = newPlayer, frozenTurns = 3) // Freeze monsters for 2 turns
             }
+            // If the player lands on a power-up, increase bomb radius
+            else if (state.grid(newX)(newY) == "F") {
+              println("Power-Up Collected! Your bomb radius has increased! 💥")
+              state.grid(newX)(newY) = "."  // Remove the power-up from the grid
+              return state.copy(player = newPlayer, bombRadius = state.bombRadius + 1)
+            }
 
-            state.grid(newX)(newY) = '1'  // Mark the new position of the player
+            state.grid(newX)(newY) = "1"  // Mark the new position of the player
             state.copy(player = newPlayer)
           } else {
             // If the new position is invalid, print message and repeat turn
@@ -175,7 +181,7 @@ object Bomberman {
         case Some(clearTurn) if stateAfterBombs.turns >= clearTurn =>
           // Clear the explosion marks (replace 'X' with '.')
           val newGrid = stateAfterBombs.grid.map(_.map {
-            case 'X' => '.' // Replace 'X' with '.'
+            case "X" => "." // Replace 'X' with '.'
             case other => other
           })
           stateAfterBombs.copy(grid = newGrid, explosionClearTurn = None) // Reset the clear turn
@@ -248,7 +254,7 @@ object Bomberman {
         if (x == monsterX && y == monsterY) return true // Found monster in explosion radius
 
         // Stop if we hit a wall
-        if (state.grid(x)(y) == '#') return false
+        if (state.grid(x)(y) == "#") return false
       }
       false
     }
@@ -266,11 +272,11 @@ object Bomberman {
   def markExplosion(x: Int, y: Int, state: GameState): Unit = {
     if (x >= 0 && x < state.grid.length && y >= 0 && y < state.grid(x).length) {
       state.grid(x)(y) match {
-        case '#' => // Do nothing if it's an unbreakable wall
-        case '*' =>
-          state.grid(x)(y) = '.' // Break the wall, turn '*' into '.'
+        case "#" => // Do nothing if it's an unbreakable wall
+        case "*" =>
+          state.grid(x)(y) = "." // Break the wall, turn '*' into '.'
         case _ =>
-          state.grid(x)(y) = 'X' // Mark the explosion
+          state.grid(x)(y) = "X" // Mark the explosion
       }
     }
   }
@@ -290,21 +296,21 @@ object Bomberman {
       distance += 1
 
       // Stop if out of bounds or if we hit a wall ('#')
-      if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length || state.grid(x)(y) == '#') {
+      if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length || state.grid(x)(y) == "#") {
         return // Stop if it's out of bounds or a wall
       }
 
-      if (state.grid(x)(y) == '*') { // Check if it's a breakable wall
+      if (state.grid(x)(y) == "*") { // Check if it's a breakable wall
         if (!wallDestroyed) { // Only destroy one breakable wall in this direction
           // Mark the breakable wall as destroyed with 'X'
-          state.grid(x)(y) = 'X' // Replace * with X to indicate destruction
+          state.grid(x)(y) = "X" // Replace * with X to indicate destruction
           wallDestroyed = true  // Mark that a breakable wall has been destroyed
         }
         return // Stop after destroying the first breakable wall in this direction
       }
 
       // Mark the cell as exploded (not a wall or breakable wall)
-      state.grid(x)(y) = 'X' // Represent explosion with 'X'
+      state.grid(x)(y) = "X" // Represent explosion with 'X'
     }
   }
 
@@ -314,16 +320,30 @@ object Bomberman {
     val playerX = state.player.x
     val playerY = state.player.y
 
-    // Check if player is within the explosion radius (2 blocks in all directions)
-    (playerX == bombX && playerY == bombY) ||
-      (playerX == bombX - 2 && playerY == bombY) || // Up 2
-      (playerX == bombX + 2 && playerY == bombY) || // Down 2
-      (playerX == bombX && playerY == bombY - 2) || // Left 2
-      (playerX == bombX && playerY == bombY + 2) || // Right 2
-      (playerX == bombX - 1 && playerY == bombY) || // Up 1
-      (playerX == bombX + 1 && playerY == bombY) || // Down 1
-      (playerX == bombX && playerY == bombY - 1) || // Left 1
-      (playerX == bombX && playerY == bombY + 1)     // Right 1
+    // Function to check if there's a wall between the player and the bomb
+    def isBlockedByWall(x1: Int, y1: Int, x2: Int, y2: Int): Boolean = {
+      var x = x1
+      var y = y1
+      while (x != x2 || y != y2) {
+        if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length || state.grid(x)(y) == "#") {
+          return true // There's a wall blocking the path
+        }
+        x += math.signum(x2 - x) // Move towards x2
+        y += math.signum(y2 - y) // Move towards y2
+      }
+      false // No wall blocking the path
+    }
+
+    // Check if player is within the explosion radius, considering walls
+    (playerX == bombX && playerY == bombY) || // Directly on the bomb
+      (playerX == bombX - 1 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Up 1, check for wall
+      (playerX == bombX + 1 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Down 1, check for wall
+      (playerX == bombX && playerY == bombY - 1 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Left 1, check for wall
+      (playerX == bombX && playerY == bombY + 1 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Right 1, check for wall
+      (playerX == bombX - 2 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Up 2, check for wall
+      (playerX == bombX + 2 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Down 2, check for wall
+      (playerX == bombX && playerY == bombY - 2 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Left 2, check for wall
+      (playerX == bombX && playerY == bombY + 2 && !isBlockedByWall(bombX, bombY, playerX, playerY))    // Right 2, check for wall
   }
 
 
@@ -349,7 +369,7 @@ object Bomberman {
         val newX = monster.x + dx
         val newY = monster.y + dy
         newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length &&
-          state.grid(newX)(newY) == '.' && !bombLocations.contains((newX, newY)) // Ensure monster doesn't move to bomb location
+          state.grid(newX)(newY) == "." && !bombLocations.contains((newX, newY)) // Ensure monster doesn't move to bomb location
       }
 
       if (possibleMoves.nonEmpty) {
