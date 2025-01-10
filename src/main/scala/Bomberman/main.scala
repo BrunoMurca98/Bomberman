@@ -28,8 +28,10 @@ case class GameState(
                       explosionClearTurn: Option[Int] = None,
                       bombPlaced: Boolean = false,
                       bombPlacedThisTurn: Boolean = false,
-                      bombRadius: Int = 2  // Default bomb radius is 2
+                      bombRadius: Int = 2,  // Default bomb radius is 2
+                      frozenTurns: Int = 0   // Tracks the number of turns monsters are frozen
                     )
+
 
 object Bomberman {
 
@@ -44,7 +46,7 @@ object Bomberman {
   // The game map, represented as a 2D array of chars
   val initialGrid: Array[Array[Char]] = Array(
     Array('#', '#', '#', '#', '#', '#', '#', '#', '#', '#' ,'#', '#', '#', '#', '#', '#', '#', '#', '#', '#'),
-    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '.','.', '#'),
+    Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', 'T', '.', '.', '.','.', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '*', '.', '.', '#','.', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '*', '*', '.', '*', '*', '#','.', '#'),
     Array('#', '.', '.', '.', '.', '.', '.', '.', '.', '.' , '.', '.', '.', '.', '.', '.', '.', '#','#', '#'),
@@ -97,11 +99,11 @@ object Bomberman {
           if (state.grid(newX)(newY) != '#' && state.grid(newX)(newY) != '*' && !state.bombs.exists(b => b.x == newX && b.y == newY && !b.exploded)) {
             val newPlayer = state.player.copy(x = newX, y = newY)
 
-            // If the player lands on a power-up, increase bomb radius
-            if (state.grid(newX)(newY) == 'F') {
-              println("Power-Up Collected! Your bomb radius has increased! 💥")
+            // If the player lands on a freeze power-up, increase freeze turns
+            if (state.grid(newX)(newY) == 'T') {
+              println("Freeze Power-Up Collected! Monsters are frozen for 2 turns! ❄️")
               state.grid(newX)(newY) = '.'  // Remove the power-up from the grid
-              return state.copy(player = newPlayer, bombRadius = state.bombRadius + 1)
+              return state.copy(player = newPlayer, frozenTurns = 3) // Freeze monsters for 2 turns
             }
 
             state.grid(newX)(newY) = '1'  // Mark the new position of the player
@@ -122,6 +124,7 @@ object Bomberman {
         state  // Return the same state (no change), repeating the turn
     }
   }
+
 
 
 
@@ -326,9 +329,15 @@ object Bomberman {
 
   // Move monsters randomly after the first move
   def moveMonsters(state: GameState): GameState = {
-    // Ensure monsters start moving after the player makes their first move
-    if (!state.firstMove) return state // Don't move monsters until the player moves at least once
+    // If the monsters are frozen, decrement the frozen turns and prevent their movement
+    val updatedFrozenTurns = if (state.frozenTurns > 0) state.frozenTurns - 1 else state.frozenTurns
 
+    // Ensure monsters start moving after the freeze period ends
+    if (updatedFrozenTurns > 0) {
+      return state.copy(frozenTurns = updatedFrozenTurns) // Monsters remain frozen, no movement happens
+    }
+
+    // Proceed to move monsters if they're not frozen
     val random = new Random()
 
     // Get the bomb locations (for checking)
@@ -353,9 +362,11 @@ object Bomberman {
       }
     }
 
-    // Update the game state with the new list of monsters
-    state.copy(monsters = updatedMonsters)
+    // Update the game state with the new list of monsters and the updated frozen turns
+    state.copy(monsters = updatedMonsters, frozenTurns = updatedFrozenTurns)
   }
+
+
 
 
 
@@ -452,7 +463,7 @@ object Bomberman {
 
   // Game state initializer with monsters
   def initialState: GameState = {
-    val monsters = List(Monster(5, 18))  // Two monsters at initial positions
+    val monsters = List(Monster(5, 18),Monster(1, 1))  // Two monsters at initial positions
     GameState(Player(1, 18), monsters, initialGrid, List(), turns = 0, bombPlacedThisTurn = false)
   }
 
