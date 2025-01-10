@@ -5,6 +5,7 @@ import scala.util.Random
 import scala.concurrent.duration._
 import java.util.Timer
 import java.util.TimerTask
+import scala.annotation.tailrec
 
 // Player representation
 case class Player(x: Int, y: Int)
@@ -45,13 +46,13 @@ object Bomberman {
 
   // The game map, represented as a 2D array of chars
   val initialGrid: Array[Array[String]] = Array(
-    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#" , "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
-    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", "F", ".", "T", ".", ".", ".", "#"),
-    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", ".", ".", "#", ".", "#"),
-    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", "*", "*", ".", "*", "*", "#", ".", "#"),
-    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", "#", "#"),
-    Array("#", ".", ".", ".", ".",  ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#"),
-    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#" , "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
+    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "F", ".", "T", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", "#", ".", ".", ".", ".", ".", "*", ".", ".", "#", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", "*", ".", "*", "*", "#", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", "#", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#"),
+    Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
   )
 
   // Display the grid (side-effectful)
@@ -243,28 +244,35 @@ object Bomberman {
   // Check if the monster is within the explosion radius and doesn't hit a wall
   def isMonsterInExplosion(monsterX: Int, monsterY: Int, bombX: Int, bombY: Int, state: GameState): Boolean = {
     // Function to check if the explosion is valid in a given direction
-    def isValidExplosionDirection(dx: Int, dy: Int): Boolean = {
-      var x = bombX
-      var y = bombY
+    @tailrec
+    def isValidExplosionDirection(dx: Int, dy: Int, x: Int = bombX, y: Int = bombY, distance: Int = 0): Boolean = {
+      // Move along the explosion direction recursively
+      if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length) return false
+      if (state.grid(x)(y) == "#") return false // Stop if we hit a wall
 
-      while (x >= 0 && x < state.grid.length && y >= 0 && y < state.grid(x).length) {
-        x += dx
-        y += dy
+      // If the monster is within the explosion range, return true
+      if (x == monsterX && y == monsterY) return true
 
-        if (x == monsterX && y == monsterY) return true // Found monster in explosion radius
+      // If we've reached the explosion radius limit, stop
+      if (distance >= state.bombRadius) return false
 
-        // Stop if we hit a wall
-        if (state.grid(x)(y) == "#") return false
-      }
-      false
+      // Continue recursively in this direction
+      isValidExplosionDirection(dx, dy, x + dx, y + dy, distance + 1)
     }
 
-    // Check if the monster is in explosion radius considering walls
-    isValidExplosionDirection(-1, 0) ||  // Left
-      isValidExplosionDirection(1, 0) ||   // Right
-      isValidExplosionDirection(0, -1) ||  // Up
-      isValidExplosionDirection(0, 1)      // Down
+    // Check all four directions: up, down, left, right
+    val directions = Seq(
+      (-1, 0), // Left
+      (1, 0),  // Right
+      (0, -1), // Up
+      (0, 1)   // Down
+    )
+
+    // The monster is in the explosion if any direction finds it within range
+    directions.exists { case (dx, dy) => isValidExplosionDirection(dx, dy) }
   }
+
+
 
 
 
@@ -284,35 +292,38 @@ object Bomberman {
 
   // Function to handle marking explosion in one direction (up, down, left, or right)
   def markExplosionInDirection(startX: Int, startY: Int, dx: Int, dy: Int, state: GameState, radius: Int): Unit = {
-    var x = startX
-    var y = startY
-    var distance = 0
-    var wallDestroyed = false  // Flag to track if a breakable wall has been destroyed
-
-    // Move in the direction (dx, dy) until we hit a wall or reach the radius limit
-    while (distance < radius) { // Use radius instead of fixed 2
-      x += dx
-      y += dy
-      distance += 1
-
-      // Stop if out of bounds or if we hit a wall ('#')
+    // Function to mark the explosion recursively
+    def markExplosion(x: Int, y: Int, distance: Int, wallDestroyed: Boolean): Unit = {
+      // Stop if out of bounds or we hit a wall ('#')
       if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length || state.grid(x)(y) == "#") {
-        return // Stop if it's out of bounds or a wall
+        return
       }
 
-      if (state.grid(x)(y) == "*") { // Check if it's a breakable wall
-        if (!wallDestroyed) { // Only destroy one breakable wall in this direction
-          // Mark the breakable wall as destroyed with 'X'
-          state.grid(x)(y) = "X" // Replace * with X to indicate destruction
-          wallDestroyed = true  // Mark that a breakable wall has been destroyed
-        }
-        return // Stop after destroying the first breakable wall in this direction
+      // If it's a breakable wall and hasn't been destroyed yet, mark it as destroyed and stop in this direction
+      if (state.grid(x)(y) == "*" && !wallDestroyed) {
+        state.grid(x)(y) = "X" // Mark the breakable wall as destroyed
+        // Stop after breaking the first wall (no further recursion in this direction)
+        return
       }
 
-      // Mark the cell as exploded (not a wall or breakable wall)
-      state.grid(x)(y) = "X" // Represent explosion with 'X'
+      // Mark the current cell as exploded (not a wall or breakable wall)
+      if (state.grid(x)(y) != "*") {
+        state.grid(x)(y) = "X" // Represent explosion with 'X'
+      }
+
+      // Stop if the distance exceeds the radius limit
+      if (distance >= radius) {
+        return
+      }
+
+      // Continue recursively in this direction
+      markExplosion(x + dx, y + dy, distance + 1, wallDestroyed)
     }
+
+    // Start the recursive marking of the explosion from the starting point
+    markExplosion(startX, startY, 0, false)
   }
+
 
 
   // Check if the player is caught in the explosion
@@ -320,31 +331,49 @@ object Bomberman {
     val playerX = state.player.x
     val playerY = state.player.y
 
-    // Function to check if there's a wall between the player and the bomb
-    def isBlockedByWall(x1: Int, y1: Int, x2: Int, y2: Int): Boolean = {
-      var x = x1
-      var y = y1
-      while (x != x2 || y != y2) {
-        if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length || state.grid(x)(y) == "#") {
-          return true // There's a wall blocking the path
+    // Check if the player is directly in the explosion (without a wall in the way)
+    def isPathClear(x1: Int, y1: Int, x2: Int, y2: Int): Boolean = {
+      // Check if the path between (x1, y1) and (x2, y2) is clear, considering walls
+      if (x1 == x2 && y1 == y2) return true  // The player is at the bomb's position
+
+      val deltaX = math.signum(x2 - x1) // Direction in X
+      val deltaY = math.signum(y2 - y1) // Direction in Y
+
+
+      @tailrec
+      def checkStep(currentX: Int, currentY: Int): Boolean = {
+        if (currentX < 0 || currentX >= state.grid.length || currentY < 0 || currentY >= state.grid(currentX).length) {
+          return false // Out of bounds
         }
-        x += math.signum(x2 - x) // Move towards x2
-        y += math.signum(y2 - y) // Move towards y2
+        if (state.grid(currentX)(currentY) == "*") {
+          return false // Wall blocking the path
+        }
+        // If the current step is not at the target, continue moving
+        if (currentX != x2 || currentY != y2) {
+          checkStep(currentX + deltaX, currentY + deltaY)
+        } else {
+          true // Reached the target
+        }
       }
-      false // No wall blocking the path
+
+      checkStep(x1 + deltaX, y1 + deltaY) // Start checking from the next step
     }
 
-    // Check if player is within the explosion radius, considering walls
-    (playerX == bombX && playerY == bombY) || // Directly on the bomb
-      (playerX == bombX - 1 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Up 1, check for wall
-      (playerX == bombX + 1 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Down 1, check for wall
-      (playerX == bombX && playerY == bombY - 1 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Left 1, check for wall
-      (playerX == bombX && playerY == bombY + 1 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Right 1, check for wall
-      (playerX == bombX - 2 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Up 2, check for wall
-      (playerX == bombX + 2 && playerY == bombY && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Down 2, check for wall
-      (playerX == bombX && playerY == bombY - 2 && !isBlockedByWall(bombX, bombY, playerX, playerY)) || // Left 2, check for wall
-      (playerX == bombX && playerY == bombY + 2 && !isBlockedByWall(bombX, bombY, playerX, playerY))    // Right 2, check for wall
+    // Check in each direction from the bomb (up, down, left, right) and up to two spaces away
+    val directions = Seq(
+      (bombX, bombY - 1), // Up
+      (bombX, bombY + 1), // Down
+      (bombX - 1, bombY), // Left
+      (bombX + 1, bombY)  // Right
+    )
+
+    // Check all directions
+    directions.exists {
+      case (x, y) =>
+        (playerX == x && playerY == y) && isPathClear(bombX, bombY, playerX, playerY)
+    }
   }
+
 
 
   // Move monsters randomly after the first move
@@ -484,7 +513,7 @@ object Bomberman {
   // Game state initializer with monsters
   def initialState: GameState = {
     val monsters = List(Monster(5, 18),Monster(1, 1))  // Two monsters at initial positions
-    GameState(Player(1, 18), monsters, initialGrid, List(), turns = 0, bombPlacedThisTurn = false)
+    GameState(Player(2, 18), monsters, initialGrid, List(), turns = 0, bombPlacedThisTurn = false)
   }
 
 
