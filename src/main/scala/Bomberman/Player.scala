@@ -1,11 +1,13 @@
 package Bomberman
 
-class Player {
+
+case class Player(x: Int, y: Int)
+
+
 
 /*
 
 // hide the power ups
-// improve a bit the ia of the monsters(maybe)
 // more bombs(maybe)
 
 PROBLEMS:
@@ -50,5 +52,3 @@ player moves in direction of the monster before it can reach the 1 tile distance
 
 
  */
-}
-
