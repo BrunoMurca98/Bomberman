@@ -1,31 +1,102 @@
 package Bomberman
 
 import cats.effect._
-import cats.syntax.all._
 import scala.util.Random
-import scala.concurrent.duration._
-import java.util.Timer
-import java.util.TimerTask
-import scala.annotation.tailrec
-
 
 object Bomberman {
   // Directions for movement
-  val directions = Map(
+  val directions: Map[Char, (Int, Int)] = Map(
     'w' -> (-1, 0), // Up
     's' -> (1, 0),  // Down
     'a' -> (0, -1), // Left
     'd' -> (0, 1)   // Right
   )
+  // The game map, represented as a 2D array of Strings
   val initialGrid: Array[Array[String]] = Array(
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "B", ".", "F", "F", "F", ".", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", "#", ".", ".", ".", ".", ".", "*", ".", ".", "#", ".", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", "*", ".", "*", ".", "#", ".", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", ".", "#", "#", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
   )
+
+
+
+  // Function to generate a random grid with walls and empty spaces
+  def generateGridWithWalls(state: GameState, wallRatio: Double = 0.60): Array[Array[String]] = {
+    val random = new Random()
+
+    // Copy the initial grid to modify it
+    val grid = state.grid.map(_.clone())
+
+    // Define the player's initial position
+    val playerX = state.player.x
+    val playerY = state.player.y
+
+    // Define positions to avoid for the player
+    val avoidPositions = Set(
+      (playerX - 1, playerY), (playerX + 1, playerY), // Vertical
+      (playerX, playerY - 1), (playerX, playerY + 1), // Horizontal
+      (playerX - 1, playerY - 1), (playerX - 1, playerY + 1), // Diagonals
+      (playerX + 1, playerY - 1), (playerX + 1, playerY + 1)  // Diagonals
+    )
+
+    // Add adjacent positions of monsters and elite monsters to avoid
+    val monsterPositions = state.monsters.map(m => (m.x, m.y)).toSet
+    val eliteMonsterPositions = state.eliteMonsters.map(m => (m.x, m.y)).toSet
+
+    // Include positions around the monsters and elite monsters
+    val monsterAndEliteAvoidPositions = (monsterPositions ++ eliteMonsterPositions).flatMap {
+      case (mx, my) =>
+        Set(
+          (mx - 1, my), (mx + 1, my), // Vertical
+          (mx, my - 1), (mx, my + 1), // Horizontal
+          (mx - 1, my - 1), (mx - 1, my + 1), // Diagonals
+          (mx + 1, my - 1), (mx + 1, my + 1)  // Diagonals
+        )
+    }
+
+    // Combine player and monster/elite monster avoidance zones
+    val allAvoidPositions = avoidPositions ++ monsterAndEliteAvoidPositions
+
+    // Define how many walls to place (as a percentage of empty spaces)
+    val numWalls = (grid.flatten.count(_ == ".") * wallRatio).toInt
+    val positions = for {
+      i <- grid.indices
+      j <- grid(i).indices
+      if grid(i)(j) == "." && !allAvoidPositions.contains((i, j)) // Avoid player and monsters
+    } yield (i, j)
+
+    // Randomly select positions for walls
+    val wallPositions = random.shuffle(positions).take(numWalls)
+
+    // Place walls in random positions
+    wallPositions.foreach { case (x, y) =>
+      grid(x)(y) = if (random.nextBoolean()) "#" else "*" // 50% chance for non-breakable vs breakable walls
+    }
+
+    grid
+  }
+
+
+
+
+
   // Display the grid (side-effectful)
   def displayGrid(state: GameState): IO[Unit] = IO {
     println(s"Turn: ${state.turns}")
@@ -56,6 +127,10 @@ object Bomberman {
       println()
     }
   }
+
+
+
+
   // Handle player movement
   def movePlayer(state: GameState, direction: Char): GameState = {
     directions.get(direction.toLower) match {
@@ -347,11 +422,12 @@ object Bomberman {
     loop(state) // Start the game loop
   }
 
-  // Game state initializer with monsters
+  // Game state initializer with monsters and a randomly generated grid
   def initialState: GameState = {
-    val monsters = List(Monster(5, 18))
-    val eliteMonsters = List(EliteMonster(1, 1))// Two monsters at initial positions
-    GameState(Player(2, 18), monsters,eliteMonsters, initialGrid, List())
+    val monsters = List(Monster(5, 18),Monster(1, 18),Monster(2, 13),Monster(15, 18),Monster(5, 11))
+    val eliteMonsters = List(EliteMonster(17, 14),EliteMonster(7, 9),EliteMonster(1, 7)) // Two monsters at initial positions
+    val gridWithWalls = generateGridWithWalls(GameState(Player(1, 1), monsters, eliteMonsters, initialGrid, List()))
+    GameState(Player(1, 1), monsters, eliteMonsters, gridWithWalls, List())
   }
 
   // Start the game

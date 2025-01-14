@@ -40,6 +40,7 @@ case class Bomb (
         state.isMonsterInExplosion(m.x, m.y, this.x, this.y, state)
       )
 
+
       // Check if all monsters are dead
       if (monstersAfterExplosion.isEmpty && eliteMonstersAfterExplosion.isEmpty) {
         println("You killed all the monsters! You win!")
