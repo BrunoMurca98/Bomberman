@@ -105,17 +105,37 @@ object Bomberman {
             if (state.grid(newX)(newY) == "T") {
               println("Freeze Power-Up Collected! Monsters are frozen for 2 turns! ❄️")
               state.grid(newX)(newY) = "."  // Remove the power-up from the grid
-              return state.copy(player = newPlayer, frozenTurns = 3) // Freeze monsters for 2 turns
+              val newState = state.copy(player = newPlayer, frozenTurns = 3) // Freeze monsters for 2 turns
+              // After moving, check if a monster is adjacent and end the game if so
+              if (isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
+                println("A monster is adjacent to you!")
+                return newState.copy(gameOver = true)
+              }
+              return newState
             }
             // If the player lands on a power-up, increase bomb radius
             else if (state.grid(newX)(newY) == "F") {
               println("Power-Up Collected! Your bomb radius has increased! 💥")
               state.grid(newX)(newY) = "."  // Remove the power-up from the grid
-              return state.copy(player = newPlayer, bombRadius = state.bombRadius + 1)
+              val newState = state.copy(player = newPlayer, bombRadius = state.bombRadius + 1)
+              // After moving, check if a monster is adjacent and end the game if so
+              if (isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
+                println("A monster is adjacent to you!")
+                return newState.copy(gameOver = true)
+              }
+              return newState
+            }
+
+            val newState = state.copy(player = newPlayer)
+
+            // After moving, check if a monster is adjacent and end the game if so
+            if (isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
+              println("A monster is adjacent to you!")
+              return newState.copy(gameOver = true)
             }
 
             state.grid(newX)(newY) = "1"  // Mark the new position of the player
-            state.copy(player = newPlayer)
+            return newState
           } else {
             // If the new position is invalid, print message and repeat turn
             println("⚠️ You can't move through walls or bombs! Try a different direction.")
@@ -132,6 +152,7 @@ object Bomberman {
         state  // Return the same state (no change), repeating the turn
     }
   }
+
 
 
 
@@ -333,6 +354,9 @@ object Bomberman {
     val playerX = state.player.x
     val playerY = state.player.y
 
+    // The player's bomb radius is used instead of the default radius
+    val explosionRadius = state.bombRadius
+
     // Function to check if the explosion is blocked by a wall
     def isExplosionBlocked(x: Int, y: Int): Boolean = {
       if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length) return true
@@ -343,24 +367,39 @@ object Bomberman {
     // Check if the player is within explosion radius, but exclude diagonal directions
     val distance = Math.abs(bombX - playerX) + Math.abs(bombY - playerY)
 
-    // Explosion affects only up to 2 blocks in horizontal or vertical directions, exclude diagonal proximity
-    if (distance > 2 || (bombX != playerX && bombY != playerY)) {
+    // Explosion affects only up to 'explosionRadius' blocks in horizontal or vertical directions
+    if (distance > explosionRadius || (bombX != playerX && bombY != playerY)) {
       return false  // Player is outside of explosion range or diagonally adjacent
     }
 
-    // Check if there are no walls in between the explosion path
-    (bombX - playerX, bombY - playerY) match {
-      case (0, d) if d > 0 =>
-        (1 until d).forall(i => !isExplosionBlocked(bombX, bombY + i))  // Downward path
-      case (0, d) if d < 0 =>
-        (d + 1 until -1).forall(i => !isExplosionBlocked(bombX, bombY + i))  // Upward path
-      case (d, 0) if d > 0 =>
-        (1 until d).forall(i => !isExplosionBlocked(bombX + i, bombY))  // Right path
-      case (d, 0) if d < 0 =>
-        (d + 1 until -1).forall(i => !isExplosionBlocked(bombX + i, bombY))  // Left path
-      case _ => true
+    // Function to check if the explosion path is clear in either horizontal or vertical direction
+    def isPathClear(startX: Int, startY: Int, endX: Int, endY: Int): Boolean = {
+      var x = startX
+      var y = startY
+      while (x != endX || y != endY) {
+        if (isExplosionBlocked(x, y)) return false
+        if (x < endX) x += 1
+        else if (x > endX) x -= 1
+        if (y < endY) y += 1
+        else if (y > endY) y -= 1
+      }
+      true
     }
+
+    // Check if the explosion path is blocked for horizontal or vertical directions
+    if (bombX == playerX) {
+      // Vertical direction check
+      if (!isPathClear(bombX, bombY, bombX, playerY)) return false
+    } else if (bombY == playerY) {
+      // Horizontal direction check
+      if (!isPathClear(bombX, bombY, playerX, bombY)) return false
+    }
+
+    // If the player is within range and the path is clear, return true
+    true
   }
+
+
 
 
 
@@ -389,25 +428,57 @@ object Bomberman {
       // Calculate the direction to move towards the player
       val (dx, dy) = (state.player.x - monster.x, state.player.y - monster.y)
 
-      // Determine the monster's move direction (up, down, left, right)
-      val (moveX, moveY) = (dx.sign, dy.sign) // Get the direction towards the player
-
-      val newX = monster.x + moveX
-      val newY = monster.y + moveY
-
-      // Check if the new position is valid (not a wall or bomb)
-      if (newX >= 0 && newX < state.grid.length && newY >= 0 && newY < state.grid(newX).length &&
-        state.grid(newX)(newY) != "#" && state.grid(newX)(newY) != "*" && !bombLocations.contains((newX, newY))) {
-        // If valid, move the monster towards the player
-        monster.copy(x = newX, y = newY)
-      } else {
-        monster // If not valid, the monster stays in the same position
+      // Determine the monster's move direction, but only move vertically or horizontally
+      val (preferredMoveX, preferredMoveY) = {
+        // Prioritize horizontal movement if necessary
+        if (Math.abs(dx) > Math.abs(dy)) {
+          (dx.sign, 0) // Move horizontally (left or right)
+        } else {
+          (0, dy.sign) // Move vertically (up or down)
+        }
       }
+
+      // List of possible move directions (X, Y): right, left, down, up
+      val possibleMoves = List(
+        (1, 0),  // Move right
+        (-1, 0), // Move left
+        (0, 1),  // Move down
+        (0, -1)  // Move up
+      )
+
+      // Function to check if a move is valid (no wall or bomb)
+      def isValidMove(x: Int, y: Int): Boolean = {
+        x >= 0 && x < state.grid.length &&
+          y >= 0 && y < state.grid(x).length &&
+          state.grid(x)(y) != "#" && state.grid(x)(y) != "*" && !bombLocations.contains((x, y))
+      }
+
+      // Try the preferred move first
+      val (newMoveX, newMoveY) = if (isValidMove(monster.x + preferredMoveX, monster.y + preferredMoveY)) {
+        (preferredMoveX, preferredMoveY)
+      } else {
+        // If the preferred move is blocked, try all possible moves
+        val validMoves = possibleMoves.filter { case (moveX, moveY) =>
+          isValidMove(monster.x + moveX, monster.y + moveY)
+        }
+
+        // If there are valid moves, randomly pick one; otherwise, stay in place
+        if (validMoves.nonEmpty) validMoves(random.nextInt(validMoves.length)) else (0, 0)
+      }
+
+      // Calculate the new position based on the move
+      val newX = monster.x + newMoveX
+      val newY = monster.y + newMoveY
+
+      // Update the monster's position
+      monster.copy(x = newX, y = newY)
     }
 
     // Update the game state with the new list of monsters and the updated frozen turns
     state.copy(monsters = updatedMonsters, frozenTurns = updatedFrozenTurns)
   }
+
+
 
 
 
