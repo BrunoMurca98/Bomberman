@@ -37,7 +37,7 @@ case class Bomb (
       )
 
       val eliteMonstersAfterExplosion = state.eliteMonsters.filterNot(m =>
-        state.isEliteMonsterInExplosion(m.x, m.y, this.x, this.y, state)
+        state.isMonsterInExplosion(m.x, m.y, this.x, this.y, state)
       )
 
       // Check if all monsters are dead

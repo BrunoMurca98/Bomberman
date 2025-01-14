@@ -107,35 +107,7 @@ case class GameState(
     directions.exists { case (dx, dy) => isValidExplosionDirection(dx, dy) }
   }
 
-  // Check if the monster is within the explosion radius and doesn't hit a wall
-  def isEliteMonsterInExplosion(eliteMonsterX: Int , eliteMonsterY: Int, bombX: Int, bombY: Int, state: GameState): Boolean = {
-    // Function to check if the explosion is valid in a given direction
-    @tailrec
-    def isValidExplosionDirection(dx: Int, dy: Int, x: Int = bombX, y: Int = bombY, distance: Int = 0): Boolean = {
-      // Move along the explosion direction recursively
-      if (x < 0 || x >= state.grid.length || y < 0 || y >= state.grid(x).length) return false
-      if (state.grid(x)(y) == "#") return false // Stop if we hit a wall
 
-      if (x == eliteMonsterX && y == eliteMonsterY) return true
-
-      // If we've reached the explosion radius limit, stop
-      if (distance >= state.bombRadius) return false
-
-      // Continue recursively in this direction
-      isValidExplosionDirection(dx, dy, x + dx, y + dy, distance + 1)
-    }
-
-    // Check all four directions: up, down, left, right
-    val directions = Seq(
-      (-1, 0), // Left
-      (1, 0),  // Right
-      (0, -1), // Up
-      (0, 1)   // Down
-    )
-
-    // The monster is in the explosion if any direction finds it within range
-    directions.exists { case (dx, dy) => isValidExplosionDirection(dx, dy) }
-  }
 
   // Mark a cell as exploded if within bounds and not a wall
   def markExplosion(x: Int, y: Int, state: GameState): Unit = {
