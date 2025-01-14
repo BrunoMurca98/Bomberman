@@ -8,20 +8,9 @@ case class Player(x: Int, y: Int)
 /*
 
 // hide the power ups
-// more bombs(maybe)
 
-PROBLEMS:
-explosion kill the player behind *
-
-
-monster doing diagonals(maybe 2 time of monster)
-player moves in direction of the monster before it can reach the 1 tile distance the monster is deleted
-
-
-
-
-  // The game map, represented as a 2D array of chars
-  val initialGrid: Array[Array[Char]] = Array(
+  // The game map, represented as a 2D array of Strings
+  val initialGrid: Array[Array[String]] = Array(
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
     Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
     Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#"),
@@ -44,11 +33,6 @@ player moves in direction of the monster before it can reach the 1 tile distance
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
   )
 
-  // Game state initializer with monsters
-  def initialState: GameState = {
-    val monsters = List(Monster(2, 2), Monster(18, 18)) // Two monsters at initial positions
-    GameState(Player(15, 18), monsters, initialGrid, List(), turns = 0)
-  }
 
 
  */

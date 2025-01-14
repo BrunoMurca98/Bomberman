@@ -19,10 +19,10 @@ object Bomberman {
   )
   val initialGrid: Array[Array[String]] = Array(
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "F", ".", "T", "F", ".", ".", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "B", ".", "F", "F", "F", ".", "#"),
     Array("#", ".", ".", ".", ".", ".", ".", ".", "#", ".", ".", ".", ".", ".", "*", ".", ".", "#", ".", "#"),
     Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", "*", ".", "*", ".", "#", ".", "#"),
-    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", "#", "#"),
+    Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "*", ".", "#", "#", "#"),
     Array("#", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "#", ".", "#"),
     Array("#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#", "#"),
   )
@@ -45,6 +45,8 @@ object Bomberman {
             } else if (state.monsters.exists(m => m.x == i && m.y == j)) {
               // If it's a monster's position, mark it as '2'
               print(" 2 ")
+            } else if (state.eliteMonsters.exists(m => m.x == i && m.y == j)) {
+              print(" 3 ") // Elite monster
             } else {
               // Otherwise, print the grid's normal content
               print(s" ${state.grid(i)(j)} ")
@@ -75,7 +77,18 @@ object Bomberman {
               state.grid(newX)(newY) = "."  // Remove the power-up from the grid
               val newState = state.copy(player = newPlayer, frozenTurns = 3) // Freeze monsters for 2 turns
               // After moving, check if a monster is adjacent and end the game if so
-              if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
+              if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters, newState.eliteMonsters)) {
+                println("A monster is adjacent to you!")
+                return newState.copy(gameOver = true)
+              }
+              return newState
+            }
+            // If the player lands on the "B" power-up, increase bomb capacity
+            else if (state.grid(newX)(newY) == "B") {
+              println("Power-Up Collected! You can now place one more bomb! 💣")
+              state.grid(newX)(newY) = "."  // Remove the power-up from the grid
+              val newState = state.copy(player = newPlayer, maxBombs = state.maxBombs + 1)
+              if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters, newState.eliteMonsters)) {
                 println("A monster is adjacent to you!")
                 return newState.copy(gameOver = true)
               }
@@ -87,7 +100,7 @@ object Bomberman {
               state.grid(newX)(newY) = "."  // Remove the power-up from the grid
               val newState = state.copy(player = newPlayer, bombRadius = state.bombRadius + 1)
               // After moving, check if a monster is adjacent and end the game if so
-              if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
+              if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters, newState.eliteMonsters)) {
                 println("A monster is adjacent to you!")
                 return newState.copy(gameOver = true)
               }
@@ -97,8 +110,8 @@ object Bomberman {
             val newState = state.copy(player = newPlayer)
 
             // After moving, check if a monster is adjacent and end the game if so
-            if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters)) {
-              println("A monster is adjacent to you!")
+            if (state.isPlayerNearMonster(newState.player.x, newState.player.y, newState.monsters, newState.eliteMonsters)) {
+              println("The monster found you!")
               return newState.copy(gameOver = true)
             }
 
@@ -190,8 +203,69 @@ object Bomberman {
       monster.copy(x = newX, y = newY)
     }
 
+
+    // Move elite monsters toward the player
+    val updatedEliteMonsters = state.eliteMonsters.map { eliteMonster =>
+      val dx = state.player.x - eliteMonster.x
+      val dy = state.player.y - eliteMonster.y
+
+      // Calculate the possible moves in 8 directions
+      val possibleMoves = List(
+        (1, 0),   // Move right
+        (-1, 0),  // Move left
+        (0, 1),   // Move down
+        (0, -1),  // Move up
+        (1, 1),   // Move down-right
+        (-1, 1),  // Move down-left
+        (1, -1),  // Move up-right
+        (-1, -1)  // Move up-left
+      )
+
+      // Function to check if a move is valid (no wall or bomb)
+      def isValidMove(x: Int, y: Int): Boolean = {
+        x >= 0 && x < state.grid.length &&
+          y >= 0 && y < state.grid(x).length &&
+          state.grid(x)(y) != "#" && state.grid(x)(y) != "*" && !bombLocations.contains((x, y))
+      }
+
+      // Determine best move by first considering diagonals and then the player’s position
+      val (bestMoveX, bestMoveY) = {
+        // If both horizontal and vertical distances are non-zero, diagonal movement is prioritized
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // Prioritize horizontal movement first, but diagonals are also an option
+          if (dx > 0) (1, 0) else (-1, 0) // Move horizontally towards the player
+        } else if (Math.abs(dx) < Math.abs(dy)) {
+          // Prioritize vertical movement first, but diagonals are also an option
+          if (dy > 0) (0, 1) else (0, -1) // Move vertically towards the player
+        } else {
+          // If distances are equal, diagonals are prioritized (move towards the player diagonally)
+          if (dx > 0 && dy > 0) (1, 1) else if (dx < 0 && dy > 0) (-1, 1)
+          else if (dx > 0 && dy < 0) (1, -1) else (-1, -1)
+        }
+      }
+
+      // Check if the best move is valid
+      val (newX, newY) = if (isValidMove(eliteMonster.x + bestMoveX, eliteMonster.y + bestMoveY)) {
+        (eliteMonster.x + bestMoveX, eliteMonster.y + bestMoveY)
+      } else {
+        // If the best move isn't valid, try other valid directions
+        val validMoves = possibleMoves.filter { case (moveX, moveY) =>
+          isValidMove(eliteMonster.x + moveX, eliteMonster.y + moveY)
+        }
+        if (validMoves.nonEmpty) {
+          val (moveX, moveY) = validMoves(random.nextInt(validMoves.length))
+          (eliteMonster.x + moveX, eliteMonster.y + moveY)
+        } else {
+          // Stay in place if no valid moves
+          (eliteMonster.x, eliteMonster.y)
+        }
+      }
+
+      eliteMonster.copy(x = newX, y = newY)
+    }
+
     // Update the game state with the new list of monsters and the updated frozen turns
-    state.copy(monsters = updatedMonsters, frozenTurns = updatedFrozenTurns)
+    state.copy(monsters = updatedMonsters, eliteMonsters = updatedEliteMonsters, frozenTurns = updatedFrozenTurns)
   }
 
   // Modify the game loop to check if the player is adjacent to a monster **after displaying the grid**
@@ -199,7 +273,7 @@ object Bomberman {
     def loop(state: GameState): IO[Unit] = {
       if (state.gameOver) {
         // If the game is over (either player lost or won), print the result
-        if (state.monsters.isEmpty) {
+        if (state.monsters.isEmpty && state.eliteMonsters.isEmpty) {
           IO(println("You killed all the monsters! You win!"))
         } else {
           IO(println("Game Over!"))
@@ -210,7 +284,7 @@ object Bomberman {
           println(s"Turn: ${state.turns}")
         } *> IO {
           // Check if the player is adjacent to any monster after displaying the grid
-          val updatedState = if (state.isPlayerNearMonster(state.player.x, state.player.y, state.monsters)) {
+          val updatedState = if (state.isPlayerNearMonster(state.player.x, state.player.y, state.monsters, state.eliteMonsters)) {
             // If the player is adjacent to a monster, end the game
             println("You are too close to a monster!")
             state.copy(gameOver = true)
@@ -275,8 +349,9 @@ object Bomberman {
 
   // Game state initializer with monsters
   def initialState: GameState = {
-    val monsters = List(Monster(5, 18),Monster(1, 1))  // Two monsters at initial positions
-    GameState(Player(2, 18), monsters, initialGrid, List(), turns = 0, bombPlacedThisTurn = false)
+    val monsters = List(Monster(5, 18))
+    val eliteMonsters = List(EliteMonster(1, 1))// Two monsters at initial positions
+    GameState(Player(2, 18), monsters,eliteMonsters, initialGrid, List())
   }
 
   // Start the game
