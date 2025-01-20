@@ -2,10 +2,22 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <profile name="sbt 1" modules="bomberman_311" />
-    <profile name="sbt 2" modules="Main,main">
+    <profile name="sbt 2" modules="Main">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>
+        <parameter value="-Ymacro-annotations" />
+      </parameters>
+      <plugins>
+        <plugin path="$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/typelevel/kind-projector_2.13.10/0.13.2/kind-projector_2.13.10-0.13.2.jar" />
+        <plugin path="$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/com/olegpy/better-monadic-for_2.13/0.3.1/better-monadic-for_2.13-0.3.1.jar" />
+      </plugins>
+    </profile>
+    <profile name="sbt 3" modules="main,main.main,main.main~1">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-Ymacro-annotations" />
         <parameter value="-Ymacro-annotations" />
       </parameters>
       <plugins>

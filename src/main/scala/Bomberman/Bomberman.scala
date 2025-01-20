@@ -94,9 +94,6 @@ object Bomberman {
   }
 
 
-
-
-
   // Display the grid (side-effectful)
   def displayGrid(state: GameState): IO[Unit] = IO {
     println(s"Turn: ${state.turns}")

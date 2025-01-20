@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bomberman Game Sessions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+        h1 {
+            color: #333;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            padding: 8px;
+            font-size: 14px;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .sessions-list {
+            margin-top: 20px;
+            list-style-type: none;
+            padding: 0;
+        }
+        .session-item {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Bomberman Game Sessions</h1>
+
+<!-- Form to create a new game session -->
+<h3>Create New Game Session</h3>
+<form id="create-session-form">
+    <label for="game-name">Game Room Name:</label>
+    <input type="text" id="game-name" name="game-name" required />
+    <button type="submit">Create Game</button>
+</form>
+
+<!-- Section to display all active game sessions -->
+<h3>Active Game Sessions</h3>
+<button id="fetch-sessions">Load Game Sessions</button>
+<ul class="sessions-list" id="sessions-list"></ul>
+
+
+
+<script>
+
+    // Function to fetch all game sessions and create the "Join" buttons
+    function fetchGameSessions() {
+        fetch('http://localhost:8080/games')
+            .then(response => response.json())
+            .then(data => {
+                const sessionsList = document.getElementById('sessions-list');
+                sessionsList.innerHTML = ''; // Clear previous sessions list
+
+                data.forEach(session => {
+                    const li = document.createElement('li');
+                    li.classList.add('session-item');
+                    // Display Join button before Session and Game Room Name
+                    const joinButton = document.createElement('button');
+                    joinButton.innerText = 'Join';
+
+                    // When the Join button is clicked, navigate to Bomberman.html with the session ID
+                    joinButton.onclick = function() {
+                        window.location.href = `http://localhost:8080/bomberman?gameSessionId=${session.id}`;
+                    };
+
+
+                    li.innerHTML = `
+                        Session Name: ${session.name}, Game Room Name: ${session.gameRoomName}
+                    `;
+                    li.appendChild(joinButton); // Append the join button to the session item
+                    sessionsList.appendChild(li);
+                });
+            }).catch(err => {
+                alert('Error fetching game sessions: ' + err.message);
+            });
+    }
+
+
+        // Function to create a new game session
+        function createGameSession(event) {
+            event.preventDefault();
+            const gameName = document.getElementById('game-name').value;
+
+            fetch('http://localhost:8080/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: gameName })
+            })
+            .then(response => response.text())
+            .then(message => {
+                alert(message); // Show the message (e.g., "Game session created with Game Room Name: ...")
+                fetchGameSessions(); // Reload the game sessions list
+            }).catch(err => {
+                alert('Error creating game session: ' + err.message);
+            });
+        }
+
+        // Function to join an existing game session
+        function joinGame(gameSessionId) {
+            fetch('http://localhost:8080/join', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ gameSessionId: gameSessionId })
+            })
+            .then(response => response.text())
+            .then(message => {
+                alert(message);  // Show success or failure message
+                fetchGameSessions();  // Reload the game sessions list
+            })
+            .catch(err => {
+                alert('Error joining game session: ' + err.message);
+            });
+        }
+
+
+
+        // Event listener for the form submission (Create Game)
+        document.getElementById('create-session-form').addEventListener('submit', createGameSession);
+
+        // Event listener for fetching game sessions
+        document.getElementById('fetch-sessions').addEventListener('click', fetchGameSessions);
+
+
+</script>
+
+</body>
+</html>

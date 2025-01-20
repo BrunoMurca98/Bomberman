@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bomberman Map</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f0f0;
+    }
+
+    .game-board {
+      display: grid;
+      grid-template-columns: repeat(20, 30px);
+      grid-template-rows: repeat(17, 30px);
+      gap: 2px;
+      background-color: #333;
+      border: 2px solid #000;
+    }
+
+    .cell {
+      width: 30px;
+      height: 30px;
+      background-color: #eee;
+      border: 1px solid #888;
+    }
+
+    .wall {
+      background-color: #555;
+    }
+
+    .empty {
+      background-color: #eee;
+    }
+  </style>
+</head>
+<body>
+
+<div class="game-board" id="game-board"></div>
+
+<script>
+  // Fetch the game state based on gameSessionId in the URL query params
+  function getGameStateFromURL() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const gameSessionId = urlParams.get('gameSessionId');
+      if (gameSessionId) {
+          fetch(`http://localhost:8080/game-state/${gameSessionId}`)
+              .then(response => response.json())  // Ensure we're parsing the JSON correctly
+              .then(grid => {
+                  console.log("Received game grid:", grid);  // Log the grid to ensure it's correct
+
+                  const gameBoard = document.getElementById("game-board");
+                  gameBoard.innerHTML = ''; // Clear previous map
+
+                  // Loop through the grid rows and cells
+                  grid.forEach(row => {
+                      const rowDiv = document.createElement("div");
+                      rowDiv.classList.add("row");  // Add a class to the row for styling
+
+                      row.forEach(cell => {
+                          const div = document.createElement("div");
+                          div.classList.add("cell"); // Default class for all cells
+
+                          // Check if the cell is a wall or empty space and assign respective class
+                          if (cell === "#") {
+                              div.classList.add("wall");
+                          } else {
+                              div.classList.add("empty");
+                          }
+
+                          // Append the cell div to the row
+                          rowDiv.appendChild(div);
+                      });
+
+                      // Append the entire row div to the game board
+                      gameBoard.appendChild(rowDiv);
+                  });
+              })
+              .catch(err => {
+                  console.error("Failed to fetch game state:", err);
+              });
+      } else {
+          alert("Game session ID not found!");
+      }
+  }
+
+  window.onload = getGameStateFromURL;
+</script>
+
+
+</body>
+</html>
