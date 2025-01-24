@@ -3,16 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bomberman Map</title>
+  <title>Bomberman Game</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-      height: 100vh;
+      height: 75vh;
       margin: 0;
       background-color: #f0f0f0;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 20px;
     }
 
     .game-board {
@@ -38,61 +44,157 @@
     .empty {
       background-color: #eee;
     }
+
+    .player {
+      background-color: #f00; /* Red for the player */
+    }
+
+    .button-container {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .button-container button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
+<h1>Bomberman Game</h1>
 
 <div class="game-board" id="game-board"></div>
 
+<div class="button-container">
+  <button id="upButton">Up</button>
+  <button id="downButton">Down</button>
+  <button id="leftButton">Left</button>
+  <button id="rightButton">Right</button>
+</div>
+
 <script>
-  // Fetch the game state based on gameSessionId in the URL query params
+  // Function to fetch and render the game state
   function getGameStateFromURL() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const gameSessionId = urlParams.get('gameSessionId');
-      if (gameSessionId) {
-          fetch(`http://localhost:8080/game-state/${gameSessionId}`)
-              .then(response => response.json())  // Ensure we're parsing the JSON correctly
-              .then(grid => {
-                  console.log("Received game grid:", grid);  // Log the grid to ensure it's correct
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameSessionId = urlParams.get('gameSessionId');
 
-                  const gameBoard = document.getElementById("game-board");
-                  gameBoard.innerHTML = ''; // Clear previous map
+    if (gameSessionId) {
+      fetch(`http://localhost:8080/game-state/${gameSessionId}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Game state fetch failed');
+          }
+          return response.json();  // Parse the JSON response
+        })
+        .then(grid => {
+          console.log("Received game grid:", grid);  // Log the grid to check its format
 
-                  // Loop through the grid rows and cells
-                  grid.forEach(row => {
-                      const rowDiv = document.createElement("div");
-                      rowDiv.classList.add("row");  // Add a class to the row for styling
+          const gameBoard = document.getElementById("game-board");
+          gameBoard.innerHTML = ''; // Clear previous map
 
-                      row.forEach(cell => {
-                          const div = document.createElement("div");
-                          div.classList.add("cell"); // Default class for all cells
+          // Ensure grid is an array of arrays
+          if (Array.isArray(grid)) {
+            // Loop through the grid rows and cells
+            grid.forEach(row => {
+              const rowDiv = document.createElement("div");
+              rowDiv.classList.add("row");
 
-                          // Check if the cell is a wall or empty space and assign respective class
-                          if (cell === "#") {
-                              div.classList.add("wall");
-                          } else {
-                              div.classList.add("empty");
-                          }
+              row.forEach(cell => {
+                const div = document.createElement("div");
+                div.classList.add("cell"); // Default class for all cells
 
-                          // Append the cell div to the row
-                          rowDiv.appendChild(div);
-                      });
+                // Check if the cell is a wall, empty space, or player
+                if (cell === "#") {
+                  div.classList.add("wall");
+                } else if (cell === ".") {
+                  div.classList.add("empty");
+                } else if (cell === "P") {
+                  div.classList.add("player");
+                }
 
-                      // Append the entire row div to the game board
-                      gameBoard.appendChild(rowDiv);
-                  });
-              })
-              .catch(err => {
-                  console.error("Failed to fetch game state:", err);
+                // Append the cell div to the row
+                rowDiv.appendChild(div);
               });
-      } else {
-          alert("Game session ID not found!");
-      }
+
+              // Append the entire row div to the game board
+              gameBoard.appendChild(rowDiv);
+            });
+          } else {
+            throw new Error('Invalid grid structure received');
+          }
+        })
+        .catch(err => {
+          console.error("Failed to fetch game state:", err);
+          alert("Error loading game state: " + err.message);
+        });
+    } else {
+      alert("Game session ID not found!");
+    }
   }
 
-  window.onload = getGameStateFromURL;
-</script>
 
+  // WebSocket Setup
+  const gameSessionId = new URLSearchParams(window.location.search).get('gameSessionId');
+  const socket = new WebSocket(`ws://localhost:8080/game/ws/${gameSessionId}`);
+
+  socket.onopen = () => {
+    console.log("WebSocket is open now!");
+  };
+
+  socket.onmessage = (event) => {
+    console.log("Message from server: ", event.data);
+    const grid = JSON.parse(event.data);
+    renderGameGrid(grid);
+  };
+
+  function sendMovement(direction) {
+    if (socket.readyState === WebSocket.OPEN) {
+      // Send the player's movement direction to the server
+      socket.send(JSON.stringify({ direction: direction }));
+    } else {
+      console.log("WebSocket is not open");
+    }
+  }
+
+  // Button event listeners
+  document.getElementById("upButton").addEventListener("click", () => sendMovement("up"));
+  document.getElementById("downButton").addEventListener("click", () => sendMovement("down"));
+  document.getElementById("leftButton").addEventListener("click", () => sendMovement("left"));
+  document.getElementById("rightButton").addEventListener("click", () => sendMovement("right"));
+
+  function renderGameGrid(grid) {
+    const gameBoard = document.getElementById("game-board");
+    gameBoard.innerHTML = ''; // Clear previous map
+
+    if (Array.isArray(grid)) {
+      grid.forEach(row => {
+        const rowDiv = document.createElement("div");
+        rowDiv.classList.add("row");
+
+        row.forEach(cell => {
+          const div = document.createElement("div");
+          div.classList.add("cell");
+
+          if (cell === "#") {
+            div.classList.add("wall");
+          } else if (cell === ".") {
+            div.classList.add("empty");
+          } else if (cell === "P") {
+            div.classList.add("player");
+          }
+
+          rowDiv.appendChild(div);
+        });
+
+        gameBoard.appendChild(rowDiv);
+      });
+    }
+  }
+
+
+</script>
 
 </body>
 </html>
