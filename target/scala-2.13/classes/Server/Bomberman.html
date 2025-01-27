@@ -68,10 +68,10 @@
 <div class="game-board" id="game-board"></div>
 
 <div class="button-container">
-  <button id="upButton">Up</button>
-  <button id="downButton">Down</button>
-  <button id="leftButton">Left</button>
-  <button id="rightButton">Right</button>
+  <button id="leftButton">Up</button>
+  <button id="rightButton">Down</button>
+  <button id="upButton">Left</button>
+  <button id="downButton">Right</button>
 </div>
 
 <script>
@@ -152,7 +152,7 @@
   function sendMovement(direction) {
     if (socket.readyState === WebSocket.OPEN) {
       // Send the player's movement direction to the server
-      socket.send(JSON.stringify({ direction: direction }));
+      socket.send(JSON.stringify({ "type": "PlayerMove", "player": "P", direction: direction }));
     } else {
       console.log("WebSocket is not open");
     }
